@@ -42,3 +42,9 @@ _deps
 .idea/**/dbnavigator.xml
 .DS_Store
 run
+build/
+netgamesim/
+build/
+netgamesim/
+build/
+netgamesim/

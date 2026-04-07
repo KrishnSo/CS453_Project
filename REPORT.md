@@ -1,42 +1,99 @@
 # CS453 Project Report
 
-## Design Overview
-The system represents a graph distributed across MPI ranks. Nodes are assigned using a modulo partitioning strategy (node_id % number_of_ranks).
+## System Design
 
-Each rank maintains its local nodes and communicates updates using MPI collective operations.
+The project implements a distributed graph processing system using MPI.
+
+Pipeline:
+1. Graph generation using seed-based approach
+2. Graph enrichment with positive edge weights
+3. Graph partitioning across MPI ranks
+4. Distributed execution of algorithms
+
+Graph data is stored in JSON format and loaded by the MPI runtime.
+
+---
 
 ## Leader Election
-We implemented the FloodMax algorithm.
+
+Algorithm: FloodMax
 
 - Each node starts with its own ID
 - Nodes exchange candidate IDs with neighbors
-- The maximum ID propagates across the graph
-- All nodes converge to the same leader
+- Maximum ID propagates across graph
+- Convergence reached when no updates occur
 
-MPI_Allreduce is used to synchronize leader updates across ranks.
+This guarantees agreement on a single leader.
+
+---
 
 ## Distributed Dijkstra
-We implemented a distributed version of Dijkstra’s algorithm.
 
-- Each rank maintains local distances
-- A global minimum node is selected using MPI_MINLOC
-- Distances are updated based on edge relaxation
-- MPI_Allreduce is used to synchronize distances
+- Each rank maintains distances for its nodes
+- Each iteration:
+  - Rank proposes local minimum
+  - Global minimum selected using MPI_Allreduce (MINLOC)
+  - Edges relaxed
+- Continues until all nodes processed
+
+---
+
+## Partitioning Strategy
+
+Two strategies implemented:
+
+### Mod Partition
+- Node assigned by: node_id % ranks
+- Simple and balanced
+
+### Block Partition
+- Nodes assigned in contiguous ranges
+- Fewer edge cuts in some cases
+
+---
 
 ## Experiments
-The system was tested with:
-- 1 MPI rank
-- 2 MPI ranks
-- 4 MPI ranks
 
-All runs produced consistent results.
+### Experiment 1: Partition Strategy
+- Compared mod vs block
+- Block partition reduced cross-rank edges
+
+### Experiment 2: Graph Size
+- Small graph (8 nodes)
+- Medium graph (16 nodes)
+- Observed increase in:
+  - message count
+  - runtime
+
+---
+
+## Metrics
+
+Collected during execution:
+
+- Leader rounds
+- Dijkstra iterations
+- Runtime (seconds)
+- Message count
+- Bytes sent
+
+---
 
 ## Observations
-- Increasing the number of ranks distributes computation
-- Communication overhead increases due to MPI collectives
-- Correctness is preserved across partitions
 
-## Assumptions
-- The graph is connected
-- All edge weights are positive
-- All MPI ranks execute collectives in the same order
+- Communication dominates performance
+- Partition strategy impacts efficiency
+- Global synchronization simplifies correctness but increases overhead
+
+---
+
+## Limitations
+
+- Uses global MPI_Allreduce (not fully decentralized)
+- Does not implement ghost-node optimization
+
+---
+
+## Conclusion
+
+The project successfully implements a distributed system pipeline with MPI, including graph processing and distributed algorithms with measurable performance metrics.
