@@ -15,3 +15,11 @@ run
 *.out
 *.exe__pycache__/
 *.pyc
+
+build/
+__pycache__/
+*.pyc
+outputs/test_graph.json
+outputs/test_graph2.json
+outputs/test_part.json
+outputs/test_part2.json
