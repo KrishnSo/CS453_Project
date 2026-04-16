@@ -1,79 +1,168 @@
 # CS453 Project Report
+## NetGameSim to MPI Distributed Algorithms
 
-## Approach / overall idea
+Name: Krishna Somarapu (`ksomar3`)
 
-We treat **graph nodes as logical entities** and **MPI ranks as partitions** that own subsets of nodes. Cross-partition edges require explicit inter-rank messaging (or equivalent global synchronization). The pipeline is: **generate/import → enrich with weights → partition → MPI algorithms → metrics**.
+## 1) Approach / Overall idea
 
-## Implementation details
+The goal of this project was to build a full pipeline, not just isolated algorithm code. I used generated graph data (synthetic and NetGameSim-style JSON), enriched it with positive weights, partitioned nodes across MPI ranks, and then ran distributed leader election and shortest path computations.
 
-### Graph export
+A key design choice is that **nodes are not MPI ranks**. Each rank owns multiple nodes, which is closer to realistic distributed systems.
 
-- **Synthetic mode:** builds a connected graph (spanning path plus random extra edges), assigns uniform positive weights, records `seed` and `source_format`.
-- **NetGameSim import:** reads `fromNode.id` / `toNode.id` edges, remaps to `0..N-1`, assigns weights from a seeded RNG.
+Pipeline used:
 
-### Partitioning
+`generate/import graph -> assign weights + normalize IDs -> partition nodes -> run MPI algorithms -> collect metrics`
 
-- **mod:** `node % ranks` — simple balance.
-- **block:** contiguous ID ranges — often fewer cut edges when ID correlates with locality.
+---
 
-Each rank receives `owner`, `local_nodes`, and `ghost_nodes` (remote endpoints of cut edges).
+## 2) Implementation details
 
-### Leader election (FloodMax-style)
+### 2.1 Graph generation and enrichment
 
-Each node initializes its candidate to its node ID. Each round, each owned node sets its candidate to the maximum of its own and neighbors’ candidates (from the replicated global candidate vector). We use **`MPI_Allreduce(MPI_MAX)`** on the full candidate vector so every rank shares a consistent view of all nodes, avoiding pairwise ordering deadlocks while preserving synchronous round semantics. Convergence is detected when **no owned node changes** in a round (`MPI_Allreduce` on a change flag). Final **agreement** is checked via global min/max on the candidate array.
+`tools/graph_export/export_graph.py` supports two modes:
 
-### Distributed Dijkstra
+1. **Synthetic mode**
+   - builds a connected graph (chain backbone + extra random edges)
+   - assigns positive integer weights in `[1,20]`
+   - records random seed
 
-Baseline **parallel Dijkstra**: each rank proposes its best local unsettled distance (`MPI_Allreduce` with `MPI_MINLOC` on the `(distance, node)` pair). The owning rank relaxes outgoing edges; updates to remote nodes are sent with point-to-point messages. Distances are reconciled with **`MPI_Allreduce(MPI_MIN)`** on the full distance vector each iteration.
+2. **NetGameSim-style import mode**
+   - reads edges using `fromNode.id` / `toNode.id`
+   - remaps node IDs to `0..N-1`
+   - assigns seeded positive weights
 
-### Ghost nodes
+Both modes output a normalized JSON format consumed by the MPI runtime.
 
-In the partition JSON, **ghost nodes** list remote neighbors of locally owned nodes. The runtime uses this metadata for documentation and consistency with the assignment; the current leader election uses global Allreduce for candidate sync; Dijkstra uses explicit messages for remote relaxations.
+### 2.2 Partitioning
 
-## Experimental hypothesis
+`tools/partition/partition.py` supports:
+- `mod` partition: `owner(node) = node % ranks`
+- `block` partition: contiguous node ID ranges
 
-1. **Partitioning:** For the same graph, **block** partitioning often reduces **cut edges** versus **mod**, which should reduce cross-rank messages.
-2. **Scaling:** A **larger** graph (medium vs small) should increase Dijkstra iterations and total communication volume.
+Partition output includes:
+- `owner` map
+- `local_nodes`
+- `ghost_nodes`
+- `cut_edges`
 
-## Expected results
+`ghost_nodes` are remote neighbors of locally owned nodes, which matter for cross-rank communication.
 
-- Mod vs block: different `cut_edges` counts; block may show lower cross-rank traffic on small graphs with ID locality.
-- Small vs medium: higher iteration counts and message counts on the medium graph.
+### 2.3 MPI runtime structure
 
-## Actual results
+The runtime is modularized in `mpi_runtime/`:
+- `graph.cpp` and `partition.cpp` for loading/validation
+- `leader.cpp` for FloodMax election
+- `dijkstra.cpp` for distributed Dijkstra baseline
+- `metrics.cpp` and `logger.cpp` for reporting
+- `main.cpp` for CLI and orchestration
 
-Run the experiment scripts and inspect:
+This avoids a single monolithic source file and keeps algorithm logic separated.
 
+### 2.4 Distributed leader election (FloodMax-style)
+
+For each node, candidate starts as its own ID. In each round:
+- each owned node computes max(candidate of self and neighbors)
+- global candidate state is synchronized with `MPI_Allreduce(MPI_MAX)`
+- convergence is checked by reducing a local-change flag
+
+After convergence, all nodes should agree on the same max ID, which is the elected leader.
+
+### 2.5 Distributed Dijkstra
+
+From source node `s`:
+- each rank tracks tentative distances for all nodes
+- each rank proposes its best unsettled local node
+- global best node selected via `MPI_Allreduce` with `MPI_MINLOC`
+- owner rank relaxes outgoing edges
+- remote relaxations are sent to other ranks
+- distances synchronized with `MPI_Allreduce(MPI_MIN)` each iteration
+
+This is a practical MPI baseline that is correct for positive weights.
+
+---
+
+## 3) Experimental hypothesis
+
+I tested two hypotheses:
+
+1. **Partition strategy effect**:
+   Block partition should reduce cut edges compared to mod in many graphs, which should reduce communication overhead.
+
+2. **Graph size effect**:
+   Medium graph should require more iterations/messages than small graph.
+
+---
+
+## 4) Expected results
+
+- A single agreed leader on every run.
+- Correct shortest-path distances from source 0.
+- Higher message volume and runtime on larger graphs.
+- Partition strategy affecting cut edges and communication behavior.
+
+---
+
+## 5) Actual results
+
+Main observations from runs and generated summaries:
+- Leader election converged and produced consistent global leader.
+- Dijkstra completed and returned valid distances for tested graphs.
+- Medium graph runs generally showed higher iteration/message costs than small graph.
+- Mod vs block showed different cut-edge counts and communication patterns.
+
+Detailed logs are saved in:
 - `outputs/experiment_logs/partition_compare.txt`
 - `outputs/experiment_logs/scale_compare.txt`
 - `outputs/summaries/partition_compare_summary.txt`
 - `outputs/summaries/scale_compare_summary.txt`
 
-(Exact numbers depend on your machine and OpenMPI build.)
+---
 
-## Explanation of results
+## 6) Explanation of results
 
-### Partition strategy
+- **Why block can help**: block keeps consecutive IDs together, so if edge locality follows ID ordering, fewer cross-rank edges are cut.
+- **Why scaling increases cost**: bigger graph means more settle steps and more synchronization/communication rounds.
+- **Why collectives are expensive**: both algorithms use global collectives (`Allreduce`), which become dominant at larger sizes.
 
-- **Mod** spreads consecutive IDs across ranks; many edges connect nearby IDs, so more edges are cut.
-- **Block** keeps consecutive IDs together, reducing cuts when edges are local in ID space.
+---
 
-### Communication costs
+## 7) Specific decisions / insights
 
-- **Leader election:** dominated by per-round `MPI_Allreduce` on a length-`N` vector plus a small change flag.
-- **Dijkstra:** each iteration uses `MPI_MINLOC` + point-to-point updates + `MPI_Allreduce` on distances — collectives dominate as `N` grows or ranks increase.
+- I prioritized correctness and reproducibility first (seeded generation, deterministic configs, scriptable runs).
+- I used two partition strategies to produce meaningful experiment comparisons.
+- I kept per-rank logs and aggregate metrics so runs are auditable and easy to explain.
+- I modularized MPI code to reduce complexity and improve maintainability.
 
-### Small vs medium graphs
+---
 
-- More nodes increase Dijkstra iterations (up to one settlement per node) and generally increase message volume.
+## 8) Limitations and future improvements
 
-## Specific decisions / insights
+Current implementation is a course baseline and can be improved by:
+- reducing global synchronization cost
+- using more local/asynchronous message patterns
+- adding larger graph/rank scaling studies
+- adding stronger performance instrumentation (per-phase communication timing)
 
-- **Global Allreduce for FloodMax candidate state** trades decentralized purity for **deadlock-free correctness** and simpler grading.
-- **MPI_MINLOC** for global frontier selection matches the course’s suggested MPI baseline.
-- **Positive weights** are required for Dijkstra; **connectivity** is required for a unique leader and well-defined shortest paths.
+---
 
-## Limitations
+## 9) Reproducibility notes
 
-- Algorithms are not fully decentralized; collectives are used for correctness and simplicity.
-- Distance accumulation uses `int`; extremely large weights/paths could overflow (not exercised in our configs).
+Everything is runnable from command line via:
+- build commands in `README.md`
+- graph/partition tools
+- experiment scripts
+- tests in `tests/run_tests.sh`
+
+Seeds are stored in graph outputs, and runtime can optionally record a run seed for traceability.
+
+## 10) Analysis and insights
+
+The experiments support the expected behavior of a distributed MPI graph workload. For the small graph with 8 nodes and 4 ranks, both partition strategies produced the same correct leader (7) and the same shortest-path distances from source 0, which confirms that correctness did not depend on the partition strategy. However, the communication cost differed slightly. With the mod partition, the run used 53 logical messages and about 592 bytes, while the block partition used 55 logical messages and about 616 bytes. The runtimes on these very small runs are close enough that startup overhead and local machine noise can affect the exact numbers, but the message counts show that partition strategy changes communication behavior even when the graph and final answers stay the same.
+
+The medium graph with 16 nodes and 4 ranks showed the clearest scaling effect. Leader election still converged in 4 rounds, but Dijkstra required 17 iterations instead of 9, and the total communication increased to 100 logical messages and about 1720 bytes. This matches the expected trend: once the graph becomes larger, the runtime performs more global coordination and more cross-rank relaxations, so both communication volume and runtime increase. In other words, the computation did not become expensive because arithmetic got harder; it became more expensive because the distributed algorithm had to synchronize and exchange more information.
+
+One important insight is that communication overhead matters even in a correct implementation. The Dijkstra baseline uses a global minimum selection each iteration and then synchronizes updated distance information, so the cost grows with both graph size and iteration count. This is why the medium graph took longer even though it used the same number of ranks. The leader election phase was relatively cheap because it converged in a small fixed number of rounds, while Dijkstra dominated the total runtime because it repeated communication and reduction steps more times.
+
+Another useful observation is that small MPI timings on a local machine are noisy. In one fallback run using the macOS/OpenMPI TCP settings, the same small graph produced the same message counts and the same correct final distances, but the measured leader-election time increased noticeably. That result reinforces an important systems lesson: on small workloads, the algorithm may be correct and stable while the timing still varies due to runtime environment, MPI transport choice, and process-launch overhead. For that reason, message counts, bytes sent, and iteration counts are often more reliable indicators of scalability trends than a single raw runtime number on a laptop.
+
+The main design takeaway from these experiments is that partitioning and communication pattern matter more than local computation cost. The implementation is correct and reproducible, but it is still a baseline design. A more advanced version could reduce communication overhead by using less global synchronization, more asynchronous progress, or smarter graph partitioning that reduces cut edges. Even so, this project already demonstrates the central distributed-systems lesson: once a graph is partitioned across ranks, edges become communication events, and communication becomes a first-class performance cost.
