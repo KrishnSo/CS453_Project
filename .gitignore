@@ -13,4 +13,5 @@ netgamesim/
 # Executables
 run
 *.out
-*.exe
+*.exe__pycache__/
+*.pyc
