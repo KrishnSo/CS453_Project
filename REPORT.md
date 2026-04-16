@@ -1,32 +1,32 @@
 # CS453 Project Report
 ## NetGameSim to MPI Distributed Algorithms
 
-Name: Krishna Somarapu (`ksomar3`)
+Krishna Somarapu (`ksomar3`)
 
-## 1) Approach / Overall idea
+## 1) Approach and overall idea
 
-The goal of this project was to build a full pipeline, not just isolated algorithm code. I used generated graph data (synthetic and NetGameSim-style JSON), enriched it with positive weights, partitioned nodes across MPI ranks, and then ran distributed leader election and shortest path computations.
+The goal of this project was to build a full pipeline and not just isolated algorithm code. I used generated graph data (synthetic and NetGameSim style JSON) to enrich it with positive weights, partitioned nodes across MPI ranks, and then ran distributed leader election and shortest path computations.
 
-A key design choice is that **nodes are not MPI ranks**. Each rank owns multiple nodes, which is closer to realistic distributed systems.
+A key design choice is that nodes are not MPI ranks. Each rank owns multiple nodes, which is closer to realistic distributed systems.
 
 Pipeline used:
 
-`generate/import graph -> assign weights + normalize IDs -> partition nodes -> run MPI algorithms -> collect metrics`
+`generate and import graph -> assign weights + normalize IDs -> partition nodes -> run MPI algorithms -> collect metrics`
 
 ---
 
-## 2) Implementation details
+## 2) Implementation and extra details
 
 ### 2.1 Graph generation and enrichment
 
-`tools/graph_export/export_graph.py` supports two modes:
+`tools/graph_export/export_graph.py` supports two modes 
 
-1. **Synthetic mode**
+1. Synthetic mode
    - builds a connected graph (chain backbone + extra random edges)
    - assigns positive integer weights in `[1,20]`
    - records random seed
 
-2. **NetGameSim-style import mode**
+2. NetGameSim style import mode
    - reads edges using `fromNode.id` / `toNode.id`
    - remaps node IDs to `0..N-1`
    - assigns seeded positive weights
@@ -35,11 +35,13 @@ Both modes output a normalized JSON format consumed by the MPI runtime.
 
 ### 2.2 Partitioning
 
-`tools/partition/partition.py` supports:
+`tools/partition/partition.py` supports
+
 - `mod` partition: `owner(node) = node % ranks`
 - `block` partition: contiguous node ID ranges
 
 Partition output includes:
+
 - `owner` map
 - `local_nodes`
 - `ghost_nodes`
@@ -49,7 +51,8 @@ Partition output includes:
 
 ### 2.3 MPI runtime structure
 
-The runtime is modularized in `mpi_runtime/`:
+The runtime is modularized in `mpi_runtime/`
+
 - `graph.cpp` and `partition.cpp` for loading/validation
 - `leader.cpp` for FloodMax election
 - `dijkstra.cpp` for distributed Dijkstra baseline
@@ -58,7 +61,7 @@ The runtime is modularized in `mpi_runtime/`:
 
 This avoids a single monolithic source file and keeps algorithm logic separated.
 
-### 2.4 Distributed leader election (FloodMax-style)
+### 2.4 Distributed leader election (The FloodMax style)
 
 For each node, candidate starts as its own ID. In each round:
 - each owned node computes max(candidate of self and neighbors)
@@ -69,7 +72,8 @@ After convergence, all nodes should agree on the same max ID, which is the elect
 
 ### 2.5 Distributed Dijkstra
 
-From source node `s`:
+From source node `s`
+
 - each rank tracks tentative distances for all nodes
 - each rank proposes its best unsettled local node
 - global best node selected via `MPI_Allreduce` with `MPI_MINLOC`
@@ -83,12 +87,12 @@ This is a practical MPI baseline that is correct for positive weights.
 
 ## 3) Experimental hypothesis
 
-I tested two hypotheses:
+I tested two hypotheses
 
-1. **Partition strategy effect**:
+1. Partition strategy effect
    Block partition should reduce cut edges compared to mod in many graphs, which should reduce communication overhead.
 
-2. **Graph size effect**:
+2. Graph size effect
    Medium graph should require more iterations/messages than small graph.
 
 ---
@@ -96,7 +100,7 @@ I tested two hypotheses:
 ## 4) Expected results
 
 - A single agreed leader on every run.
-- Correct shortest-path distances from source 0.
+- Correct shortest path distances from source 0.
 - Higher message volume and runtime on larger graphs.
 - Partition strategy affecting cut edges and communication behavior.
 
@@ -120,13 +124,13 @@ Detailed logs are saved in:
 
 ## 6) Explanation of results
 
-- **Why block can help**: block keeps consecutive IDs together, so if edge locality follows ID ordering, fewer cross-rank edges are cut.
-- **Why scaling increases cost**: bigger graph means more settle steps and more synchronization/communication rounds.
-- **Why collectives are expensive**: both algorithms use global collectives (`Allreduce`), which become dominant at larger sizes.
+- Why block can help: block keeps consecutive IDs together, so if edge locality follows ID ordering, fewer cross-rank edges are cut.
+- Why scaling increases cost: bigger graph means more settle steps and more synchronization/communication rounds.
+- Why collectives are expensive: both algorithms use global collectives (`Allreduce`), which become dominant at larger sizes.
 
 ---
 
-## 7) Specific decisions / insights
+## 7) Insights that are specified 
 
 - I prioritized correctness and reproducibility first (seeded generation, deterministic configs, scriptable runs).
 - I used two partition strategies to produce meaningful experiment comparisons.
@@ -135,9 +139,10 @@ Detailed logs are saved in:
 
 ---
 
-## 8) Limitations and future improvements
+## 8) Limitations and hopeful future improvements
 
-Current implementation is a course baseline and can be improved by:
+Current implementation is a course baseline and can be improved by
+
 - reducing global synchronization cost
 - using more local/asynchronous message patterns
 - adding larger graph/rank scaling studies
@@ -145,9 +150,10 @@ Current implementation is a course baseline and can be improved by:
 
 ---
 
-## 9) Reproducibility notes
+## 9) Reproducibility
 
-Everything is runnable from command line via:
+Everything is runnable from command line via
+
 - build commands in `README.md`
 - graph/partition tools
 - experiment scripts
@@ -157,7 +163,7 @@ Seeds are stored in graph outputs, and runtime can optionally record a run seed 
 
 ## 10) Analysis and insights
 
-The experiments support the expected behavior of a distributed MPI graph workload. For the small graph with 8 nodes and 4 ranks, both partition strategies produced the same correct leader (7) and the same shortest-path distances from source 0, which confirms that correctness did not depend on the partition strategy. However, the communication cost differed slightly. With the mod partition, the run used 53 logical messages and about 592 bytes, while the block partition used 55 logical messages and about 616 bytes. The runtimes on these very small runs are close enough that startup overhead and local machine noise can affect the exact numbers, but the message counts show that partition strategy changes communication behavior even when the graph and final answers stay the same.
+The experiments support the expected behavior of a distributed MPI graph workload. For the small graph with 8 nodes and 4 ranks, both partition strategies produced the same correct leader (7) and the same shortest path distances from source 0, which confirms that correctness did not depend on the partition strategy. However, the communication cost differed slightly. With the mod partition, the run used 53 logical messages and about 592 bytes, while the block partition used 55 logical messages and about 616 bytes. The runtimes on these very small runs are close enough that startup overhead and local machine noise can affect the exact numbers, but the message counts show that partition strategy changes communication behavior even when the graph and final answers stay the same.
 
 The medium graph with 16 nodes and 4 ranks showed the clearest scaling effect. Leader election still converged in 4 rounds, but Dijkstra required 17 iterations instead of 9, and the total communication increased to 100 logical messages and about 1720 bytes. This matches the expected trend: once the graph becomes larger, the runtime performs more global coordination and more cross-rank relaxations, so both communication volume and runtime increase. In other words, the computation did not become expensive because arithmetic got harder; it became more expensive because the distributed algorithm had to synchronize and exchange more information.
 
