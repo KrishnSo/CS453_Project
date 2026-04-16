@@ -35,31 +35,40 @@ def main():
     owner = {}
 
     for i in range(n):
-        if args.strategy == "mod":
-            owner[str(i)] = mod_owner(i, args.ranks)
-        else:
-            owner[str(i)] = block_owner(i, n, args.ranks)
+        owner[str(i)] = (
+            mod_owner(i, args.ranks)
+            if args.strategy == "mod"
+            else block_owner(i, n, args.ranks)
+        )
 
     local_nodes = {str(r): [] for r in range(args.ranks)}
+    ghost_nodes = {str(r): set() for r in range(args.ranks)}
+    cut_edges = 0
+
     for i in range(n):
         local_nodes[str(owner[str(i)])].append(i)
 
-    cut_edges = 0
     for e in graph["edges"]:
-        if owner[str(e["u"])] != owner[str(e["v"])]:
+        u = e["u"]
+        v = e["v"]
+        ru = owner[str(u)]
+        rv = owner[str(v)]
+        if ru != rv:
             cut_edges += 1
+            ghost_nodes[str(ru)].add(v)
+            ghost_nodes[str(rv)].add(u)
 
     part = {
         "num_ranks": args.ranks,
         "strategy": args.strategy,
         "owner": owner,
         "local_nodes": local_nodes,
+        "ghost_nodes": {k: sorted(list(v)) for k, v in ghost_nodes.items()},
         "cut_edges": cut_edges,
     }
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-
     with open(out_path, "w") as f:
         json.dump(part, f, indent=2)
 

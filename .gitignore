@@ -1,10 +1,9 @@
+# Java
 *.class
 *.log
-
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 
-# C++ build artifacts
+# C/C++ artifacts
 *.o
 *.out
 *.exe
@@ -14,6 +13,7 @@ hs_err_pid*
 *.hex
 
 # CMake
+build/
 cmake-build-*/
 CMakeCache.txt
 CMakeFiles/
@@ -26,7 +26,7 @@ compile_commands.json
 CTestTestfile.cmake
 _deps
 
-# CLion
+# IDE / OS
 .idea/**/workspace.xml
 .idea/**/tasks.xml
 .idea/**/usage.statistics.xml
@@ -41,10 +41,19 @@ _deps
 .idea/**/uiDesigner.xml
 .idea/**/dbnavigator.xml
 .DS_Store
+
+# Local binaries / repos
 run
-build/
 netgamesim/
-build/
-netgamesim/
-build/
-netgamesim/
+
+# Temporary test outputs
+outputs/test_graph.json
+outputs/test_graph2.json
+outputs/test_part.json
+outputs/test_part2.json
+outputs/test_part_mod.json
+outputs/test_graph_small.json
+outputs/test_small_mod.json
+outputs/test_small_block.json
+outputs/test_graph_medium.json
+outputs/test_medium_mod.json
