@@ -1,59 +1,16 @@
-# Java
-*.class
-*.log
-hs_err_pid*
-
-# C/C++ artifacts
-*.o
-*.out
-*.exe
-*.app
-*.i*86
-*.x86_64
-*.hex
-
-# CMake
+# Build
 build/
-cmake-build-*/
-CMakeCache.txt
-CMakeFiles/
-CMakeScripts/
-Testing/
-Makefile
-cmake_install.cmake
-install_manifest.txt
-compile_commands.json
-CTestTestfile.cmake
-_deps
 
-# IDE / OS
-.idea/**/workspace.xml
-.idea/**/tasks.xml
-.idea/**/usage.statistics.xml
-.idea/**/dictionaries
-.idea/**/shelf
-.idea/**/contentModel.xml
-.idea/**/dataSources/
-.idea/**/dataSources.ids
-.idea/**/dataSources.local.xml
-.idea/**/sqlDataSources.xml
-.idea/**/dynamic.xml
-.idea/**/uiDesigner.xml
-.idea/**/dbnavigator.xml
-.DS_Store
+# Outputs (generated files)
+outputs/
 
-# Local binaries / repos
-run
+# External dependency
 netgamesim/
 
-# Temporary test outputs
-outputs/test_graph.json
-outputs/test_graph2.json
-outputs/test_part.json
-outputs/test_part2.json
-outputs/test_part_mod.json
-outputs/test_graph_small.json
-outputs/test_small_mod.json
-outputs/test_small_block.json
-outputs/test_graph_medium.json
-outputs/test_medium_mod.json
+# Mac
+.DS_Store
+
+# Executables
+run
+*.out
+*.exe

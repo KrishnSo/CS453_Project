@@ -41,6 +41,11 @@ def main():
             else block_owner(i, n, args.ranks)
         )
 
+    for i in range(n):
+        r = owner[str(i)]
+        if r < 0 or r >= args.ranks:
+            raise SystemExit(f"invalid owner rank {r} for node {i}")
+
     local_nodes = {str(r): [] for r in range(args.ranks)}
     ghost_nodes = {str(r): set() for r in range(args.ranks)}
     cut_edges = 0

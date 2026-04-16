@@ -1,0 +1,5 @@
+{
+  "raw_input": "outputs/raw/raw_netgamesim_graph.json",
+  "seed": 12345,
+  "out": "outputs/graphs/graph_from_netgamesim.json"
+}
