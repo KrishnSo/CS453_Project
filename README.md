@@ -4,10 +4,10 @@
 Name: Krishna Somarapu (`ksomar3`)
 
 This project takes generated network graphs and runs two distributed algorithms using MPI:
-1. Leader election (FloodMax style)
-2. Shortest paths from a source (distributed Dijkstra baseline)
+1. Leader election (using the FloodMax style)
+2. Shortest paths from a source (using the distributed Dijkstra baseline)
 
-The full workflow is:
+The full workflow is as:
 
 `Graph generation/import -> graph enrichment (positive weights + IDs) -> partition across MPI ranks -> distributed algorithm run -> logs + metrics + experiment summary`
 
@@ -15,9 +15,9 @@ The full workflow is:
 
 ## Upstream attribution
 
-This project builds on NetGameSim from Prof. Grechanik:
-- NetGameSim repo: <https://github.com/0x1DOCD00D/NetGameSim>
-- Walkthrough video: <https://www.youtube.com/watch?v=6fdazJBkdjA&t=2658s>
+This project builds on NetGameSim from Professor Grechanik:
+- The initial NetGameSim repo: <https://github.com/0x1DOCD00D/NetGameSim>
+- I referred the Walkthrough video: <https://www.youtube.com/watch?v=6fdazJBkdjA&t=2658s>
 
 ---
 
@@ -29,7 +29,7 @@ This project builds on NetGameSim from Prof. Grechanik:
 - Python 3
 - C++17 compiler
 
-If needed on macOS:
+If needed on macOS - I use mac so this helps:
 ```bash
 brew install open-mpi cmake
 ```
@@ -38,7 +38,7 @@ brew install open-mpi cmake
 
 ## Repository layout
 
-```text
+```
 CS453_Spring2026/
 ├── netgamesim/
 ├── configs/
@@ -57,6 +57,10 @@ CS453_Spring2026/
 ---
 
 ## Build instructions
+
+Download the file and move it to Desktop for easier access
+Basically clone the repository and build from the root directory:
+Name the file CS453_Spring2026
 
 ```bash
 cd ~/Desktop/CS453_Spring2026
@@ -80,7 +84,7 @@ Medium graph:
 ./tools/graph_export/run.sh configs/medium.json outputs/graphs/graph_medium.json
 ```
 
-What this does:
+What this does is:
 - creates a connected graph
 - assigns positive edge weights
 - stores random seed in output JSON
@@ -88,7 +92,7 @@ What this does:
 
 ---
 
-## 2) Generate graph (NetGameSim-style import path)
+## 2) Generate graph (The NetGameSim style import path)
 
 ```bash
 python3 tools/graph_export/export_graph.py \
@@ -182,12 +186,12 @@ This runs:
 
 ## Logging and metrics
 
-Per-rank runtime logs:
+Per rank runtime logs are as follows:
 - `outputs/logs/runtime_rank0.log`
 - `outputs/logs/runtime_rank1.log`
 - ...
 
-Runtime metrics include:
+Runtime metrics would include:
 - leader rounds
 - dijkstra iterations
 - runtime per algorithm
@@ -196,7 +200,13 @@ Runtime metrics include:
 
 ---
 
-## Assumptions for correctness
+## Reproducibility
+
+All graph generation is seed based. The seed used for each graph is stored in the output JSON, allowing exact reproduction of experiments. Runtime seeds can also be passed via CLI.
+
+---
+
+## Assumptions 
 
 - Graph is connected
 - Edge weights are strictly positive
@@ -205,7 +215,7 @@ Runtime metrics include:
 
 ---
 
-## Quick grader-friendly end-to-end example
+## You can use this as a very quick example for test or use cases
 
 ```bash
 cd ~/Desktop/CS453_Spring2026
@@ -215,7 +225,7 @@ cmake -S mpi_runtime -B build && cmake --build build
 mpirun -n 4 ./build/ngs_mpi --graph outputs/graphs/graph_small.json --part outputs/partitions/part_small_r4_mod.json --algo both --source 0
 ```
 
-If OpenMPI complains on macOS network interfaces, use:
+If the openmpi complains on mac network interface then please use:
 ```bash
 mpirun --mca btl tcp,self --mca pml ob1 -n 4 ./build/ngs_mpi ...
 ```
