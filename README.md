@@ -1,30 +1,62 @@
-# CS453 Distributed MPI Project (NetGameSim → MPI)
+# CS453 Spring 2026 Project
+## NetGameSim to MPI Distributed Algorithms
 
-This project implements a full pipeline: **synthetic or NetGameSim-style graphs** → **weighted JSON** → **partition with ghost nodes** → **MPI FloodMax leader election** and **distributed Dijkstra**, with metrics and experiments.
+Name: Krishna Somarapu (`ksomar3`)
 
-Upstream: [NetGameSim](https://github.com/0x1DOCD00D/NetGameSim) (course walkthrough: [YouTube](https://www.youtube.com/watch?v=6fdazJBkdjA&t=2658s)).
+This project takes generated network graphs and runs two distributed algorithms using MPI:
+1. Leader election (FloodMax style)
+2. Shortest paths from a source (distributed Dijkstra baseline)
+
+The full workflow is:
+
+`Graph generation/import -> graph enrichment (positive weights + IDs) -> partition across MPI ranks -> distributed algorithm run -> logs + metrics + experiment summary`
+
+---
+
+## Upstream attribution
+
+This project builds on NetGameSim from Prof. Grechanik:
+- NetGameSim repo: <https://github.com/0x1DOCD00D/NetGameSim>
+- Walkthrough video: <https://www.youtube.com/watch?v=6fdazJBkdjA&t=2658s>
+
+---
 
 ## Requirements
 
 - macOS or Linux
-- **OpenMPI** (e.g. `brew install open-mpi`)
-- **CMake** 3.10+
-- **Python 3**
+- OpenMPI
+- CMake (3.10+)
+- Python 3
 - C++17 compiler
 
-## Project layout
+If needed on macOS:
+```bash
+brew install open-mpi cmake
+```
 
-- `netgamesim/` — upstream NetGameSim (clone or submodule; keep intact)
-- `tools/graph_export/` — graph generation / NetGameSim JSON import
-- `tools/partition/` — partitioners (`mod`, `block`) with owner + ghost metadata
-- `mpi_runtime/` — C++ MPI runtime (`ngs_mpi`)
-- `configs/` — JSON configs for graphs and import helper
-- `outputs/` — graphs, partitions, logs, experiment captures, summaries
-- `experiments/` — reproducible experiment scripts
-- `REPORT.md` — design and results
-- `student.txt` — student identity line
+---
 
-## Build (command line)
+## Repository layout
+
+```text
+CS453_Spring2026/
+├── netgamesim/
+├── configs/
+├── tools/
+│   ├── graph_export/
+│   └── partition/
+├── mpi_runtime/
+├── experiments/
+├── outputs/
+├── tests/
+├── README.md
+├── REPORT.md
+└── student.txt
+```
+
+---
+
+## Build instructions
 
 ```bash
 cd ~/Desktop/CS453_Spring2026
@@ -32,77 +64,158 @@ cmake -S mpi_runtime -B build
 cmake --build build
 ```
 
-## Synthetic graph workflow
+This builds the runtime executable at `build/ngs_mpi`.
 
+---
+
+## 1) Generate graph (synthetic path)
+
+Small graph:
 ```bash
 ./tools/graph_export/run.sh configs/small.json outputs/graphs/graph_small.json
-./tools/partition/run.sh outputs/graphs/graph_small.json --ranks 4 --strategy mod --out outputs/partitions/part_small_r4_mod.json
-mpirun -n 4 ./build/ngs_mpi --graph outputs/graphs/graph_small.json --part outputs/partitions/part_small_r4_mod.json --algo both --source 0
 ```
 
-## NetGameSim import workflow
+Medium graph:
+```bash
+./tools/graph_export/run.sh configs/medium.json outputs/graphs/graph_medium.json
+```
+
+What this does:
+- creates a connected graph
+- assigns positive edge weights
+- stores random seed in output JSON
+- normalizes node IDs to `0..N-1`
+
+---
+
+## 2) Generate graph (NetGameSim-style import path)
 
 ```bash
 python3 tools/graph_export/export_graph.py \
   --raw-netgamesim outputs/raw/raw_netgamesim_graph.json \
   --seed 12345 \
   --out outputs/graphs/graph_from_netgamesim.json
-./tools/partition/run.sh outputs/graphs/graph_from_netgamesim.json --ranks 4 --strategy mod --out outputs/partitions/part_netgamesim_r4_mod.json
-mpirun -n 4 ./build/ngs_mpi --graph outputs/graphs/graph_from_netgamesim.json --part outputs/partitions/part_netgamesim_r4_mod.json --algo both --source 0
 ```
 
-Or use the helper config:
-
+Or using config wrapper:
 ```bash
 ./tools/graph_export/run.sh configs/netgamesim_import.json outputs/graphs/graph_from_netgamesim.json import
 ```
 
-## MPI runtime CLI
+---
 
+## 3) Partition graph across ranks
+
+Mod partition:
 ```bash
-./build/ngs_mpi --graph <graph.json> --part <part.json> [--algo leader|dijkstra|both] [--source N] [--rounds R] [--seed S]
+./tools/partition/run.sh outputs/graphs/graph_small.json --ranks 4 --strategy mod --out outputs/partitions/part_small_r4_mod.json
 ```
 
-- `--rounds` — leader-election cap (default `0` = run until convergence)
-- `--seed` — optional; echoed to logs for reproducibility
+Block partition:
+```bash
+./tools/partition/run.sh outputs/graphs/graph_small.json --ranks 4 --strategy block --out outputs/partitions/part_small_r4_block.json
+```
 
-## Experiments
+Partition output includes:
+- `owner` map
+- `local_nodes` per rank
+- `ghost_nodes` per rank
+- `cut_edges`
 
+---
+
+## 4) Run MPI runtime
+
+Run both algorithms:
+```bash
+mpirun -n 4 ./build/ngs_mpi --graph outputs/graphs/graph_small.json --part outputs/partitions/part_small_r4_mod.json --algo both --source 0
+```
+
+Leader election only:
+```bash
+mpirun -n 4 ./build/ngs_mpi --graph outputs/graphs/graph_small.json --part outputs/partitions/part_small_r4_mod.json --algo leader --rounds 200
+```
+
+Dijkstra only:
+```bash
+mpirun -n 4 ./build/ngs_mpi --graph outputs/graphs/graph_small.json --part outputs/partitions/part_small_r4_mod.json --algo dijkstra --source 0
+```
+
+Optional args:
+- `--rounds R` max rounds for leader election (`0` = until convergence)
+- `--seed S` records run seed in logs for reproducibility
+
+---
+
+## 5) Run experiments
+
+Experiment 1 (partition strategy comparison):
 ```bash
 ./experiments/run_partition_compare.sh
+```
+
+Experiment 2 (small vs medium scaling):
+```bash
 ./experiments/run_scale_compare.sh
 ```
 
-Logs: `outputs/experiment_logs/` · Summaries: `outputs/summaries/`
+Outputs:
+- raw experiment logs: `outputs/experiment_logs/`
+- summaries: `outputs/summaries/`
+
+---
 
 ## Tests
 
+Run all tests:
 ```bash
 ./tests/run_tests.sh
-# or: python3 -m unittest discover -s tests -v
 ```
 
-Includes unit tests for export/partition and a reference Dijkstra check; optional MPI smoke test if `build/ngs_mpi` and `mpirun` are available.
+This runs:
+- export tool tests
+- partition tool tests
+- reference Dijkstra correctness test
+- MPI smoke test (when `mpirun` and build are available)
 
-## Logging
+---
 
-Per-rank logs: `outputs/logs/runtime_rank<R>.log` (append mode).
+## Logging and metrics
 
-## Assumptions (correctness)
+Per-rank runtime logs:
+- `outputs/logs/runtime_rank0.log`
+- `outputs/logs/runtime_rank1.log`
+- ...
 
-- Graph is **connected**
-- Edge weights are **strictly positive** (Dijkstra)
-- Node IDs are **0 … N−1** in normalized JSON
-- `num_ranks` in the partition file **matches** `mpirun -n`
+Runtime metrics include:
+- leader rounds
+- dijkstra iterations
+- runtime per algorithm
+- total message count (logical)
+- approximate bytes sent
 
-## macOS / OpenMPI note
+---
 
-If `mpirun` fails with interface or PMIx errors, try:
+## Assumptions for correctness
 
+- Graph is connected
+- Edge weights are strictly positive
+- Node IDs are normalized to `0..N-1`
+- Partition rank count matches `mpirun -n`
+
+---
+
+## Quick grader-friendly end-to-end example
+
+```bash
+cd ~/Desktop/CS453_Spring2026
+cmake -S mpi_runtime -B build && cmake --build build
+./tools/graph_export/run.sh configs/small.json outputs/graphs/graph_small.json
+./tools/partition/run.sh outputs/graphs/graph_small.json --ranks 4 --strategy mod --out outputs/partitions/part_small_r4_mod.json
+mpirun -n 4 ./build/ngs_mpi --graph outputs/graphs/graph_small.json --part outputs/partitions/part_small_r4_mod.json --algo both --source 0
+```
+
+If OpenMPI complains on macOS network interfaces, use:
 ```bash
 mpirun --mca btl tcp,self --mca pml ob1 -n 4 ./build/ngs_mpi ...
 ```
-
-## Author
-
-See `student.txt`.
